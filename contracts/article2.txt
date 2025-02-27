@@ -1,0 +1,246 @@
+# A Custom On-Chain NFT Implementation
+
+NFTs (Non-Fungible Tokens) have revolutionized digital ownership by providing verifiable scarcity and provenance for digital assets. This article breaks down the implementation of an on-chain NFT smart contract that stores both metadata and artwork directly on the blockchain.
+
+## License, Pragma, and Imports
+
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import '@openzeppelin/contracts/token/ERC721/ERC721.sol';
+import '@openzeppelin/contracts/utils/Base64.sol'; //used for encoding svg to base64
+import '@openzeppelin/contracts/utils/Strings.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
+```
+
+The first line specifies the UNLICENSED identifier, indicating that no license is granted to use this code without explicit permission.
+
+The second line defines the Solidity compiler version to be used. The `^0.8.28` notation means the contract should be compiled with version 0.8.28 or any compatible newer version within the 0.8.x range.
+
+The import statements bring in established libraries from OpenZeppelin, a trusted source for secure smart contract components:
+- **ERC721**: The standard interface for non-fungible tokens on Ethereum
+- **Base64**: Utility for encoding binary data (like SVG images) into Base64 format
+- **Strings**: Utility for string manipulation and conversion
+- **Ownable**: Implementation of an authorization mechanism to restrict certain operations to the contract owner
+
+## Contract Declaration and State Variables
+
+```solidity
+contract KMSNFTOnChain is ERC721, Ownable {
+  using Strings for uint256;
+  uint256 private _tokenIdCounter;
+
+  error TokenNotFound();
+```
+
+Our contract, named `KMSNFTOnChain`, inherits from both ERC721 (the NFT standard) and Ownable (for access control). 
+
+The `using Strings for uint256` statement enables us to call string conversion methods directly on integer values, which will be useful for token ID formatting.
+
+We declare a private state variable `_tokenIdCounter` to keep track of the last minted token ID.
+
+We also define a custom error `TokenNotFound()` which is more gas-efficient than using string error messages.
+
+## Modifiers and Constructor
+
+```solidity
+  // Modifiers
+  modifier onlyOwner() {
+    require(owner() == msg.sender, 'Caller is not the owner');
+    _;
+  }
+  
+  constructor() ERC721('KemsguyNFT', 'NKFT') Ownable(msg.sender) {}
+```
+
+The `onlyOwner` modifier restricts function access to just the contract owner. It checks if the caller (`msg.sender`) is the owner and reverts with an error message if not. The `_` represents where the modified function's code will be executed.
+
+The constructor initializes our NFT contract with:
+1. The token collection name: "KemsguyNFT"
+2. The token symbol: "NKFT"
+3. Sets the contract deployer as the owner (via `Ownable(msg.sender)`)
+
+This simple constructor requires no parameters and establishes the basic identity of our NFT collection.
+
+## Token Metadata Generation
+
+```solidity
+  function tokenURI(uint256 tokenId) public view override returns (string memory) {
+    if (ownerOf(tokenId) == address(0)) revert TokenNotFound();
+
+    string memory name = string(abi.encodePacked('KemsguyNFT #', tokenId.toString()));
+    string memory description = 'This is an on-chain NFT';
+    string memory image = generateBase64Image();
+
+    string memory json = string(
+      abi.encodePacked(
+        '{"name":"',
+        name,
+        '",',
+        '"description":"',
+        description,
+        '",',
+        '"image":"',
+        image,
+        '"}'
+      )
+    );
+
+    return string(abi.encodePacked('data:application/json;base64,', Base64.encode(bytes(json))));
+  }
+```
+
+The `tokenURI` function is a critical part of any NFT contract, as it provides the metadata for a specific token. This function:
+
+1. First checks if the token exists - if the owner is the zero address (which is not possible for a valid token), it reverts with the `TokenNotFound` error
+2. Creates a name for the token by combining "KemsguyNFT #" with the token ID
+3. Sets a simple description for all tokens
+4. Calls the `generateBase64Image()` function to get the SVG image as a Base64-encoded data URI
+5. Assembles these components into a JSON structure with name, description, and image fields
+6. Encodes the entire JSON into Base64 and returns it as a data URI starting with "data:application/json;base64,"
+
+This approach stores all token metadata on-chain, making it fully decentralized and immune to link rot (where metadata stored off-chain becomes inaccessible).
+
+## SVG Image Generation
+
+```solidity
+  function generateBase64Image() internal pure returns (string memory) {
+    string memory svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">'
+    '<defs>'
+    '<linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">'
+    '<stop offset="0%" stop-color="#1a2a6c"/>'
+    '<stop offset="50%" stop-color="#b21f1f"/>'
+    '<stop offset="100%" stop-color="#fdbb2d"/>'
+    '</linearGradient>'
+    '<filter id="glow" x="-20%" y="-20%" width="140%" height="140%">'
+    '<feGaussianBlur stdDeviation="5" result="blur"/>'
+    '<feComposite in="SourceGraphic" in2="blur" operator="over"/>'
+    '</filter>'
+    '</defs>'
+    '<rect width="100%" height="100%" rx="15" ry="15" fill="url(#bgGradient)"/>'
+    '<circle cx="250" cy="150" r="40" fill="#000000" stroke="#ffffff" stroke-width="2"/>'
+    '<path d="M230 190 L220 300 L280 300 L270 190" fill="#000000" stroke="#ffffff" stroke-width="2"/>'
+    '<path d="M230 200 L180 230 L190 250 L230 220" fill="#000000" stroke="#ffffff" stroke-width="2"/>'
+    '<path d="M270 200 L330 180 L335 200 L270 220" fill="#000000" stroke="#ffffff" stroke-width="2"/>'
+    '<path d="M230 300 L210 380 L240 380 L250 300" fill="#000000" stroke="#ffffff" stroke-width="2"/>'
+    '<path d="M270 300 L290 380 L260 380 L250 300" fill="#000000" stroke="#ffffff" stroke-width="2"/>'
+    '<circle cx="180" cy="230" r="15" fill="#ff0000" stroke="#ffffff" stroke-width="2"/>'
+    '<circle cx="335" cy="200" r="15" fill="#ff0000" stroke="#ffffff" stroke-width="2"/>'
+    '<text x="250" y="430" font-family="Impact, sans-serif" font-size="40" text-anchor="middle" fill="#ffffff" filter="url(#glow)">KEMSGUY FIGHTER</text>'
+    '<path d="M100 50 L120 70 L100 90 L80 70 Z" fill="#ffcc00" stroke="#ffffff" stroke-width="1"/>'
+    '<path d="M400 50 L420 70 L400 90 L380 70 Z" fill="#ffcc00" stroke="#ffffff" stroke-width="1"/>'
+    '<rect x="150" y="50" width="200" height="40" rx="10" ry="10" fill="rgba(255,255,255,0.2)" stroke="#ffffff" stroke-width="1"/>'
+    '<text x="250" y="77" font-family="Arial, sans-serif" font-size="20" text-anchor="middle" fill="#ffffff">KMS FIGHTER #001</text>'
+    '</svg>';
+
+    return string(abi.encodePacked('data:image/svg+xml;base64,', Base64.encode(bytes(svg))));
+  }
+```
+
+The `generateBase64Image` function creates an SVG image as a string. This SVG defines a stylized fighter character with:
+- A gradient background transitioning from dark blue to red to yellow
+- A silhouette figure with red fighting gloves
+- Decorative elements and text
+- The "KEMSGUY FIGHTER" branding with a glow effect
+
+After constructing the SVG string, the function:
+1. Encodes it to Base64 using OpenZeppelin's Base64 library
+2. Prepends the data URI scheme "data:image/svg+xml;base64," 
+3. Returns the complete data URI
+
+This technique allows for the image to be stored entirely on-chain and renders in NFT marketplaces and wallets just like any externally-hosted image would.
+
+## Minting Function
+
+```solidity
+  function mint() public {
+    _tokenIdCounter += 1;
+    _safeMint(msg.sender, _tokenIdCounter);
+  }
+```
+
+The `mint` function allows anyone to create a new NFT. It's kept deliberately simple:
+1. Increments the token ID counter
+2. Calls the internal `_safeMint` function (inherited from ERC721) to create the token and assign it to the caller's address
+
+This implementation allows unlimited public minting with no restrictions or costs beyond the gas fees of the transaction itself.
+
+## Burning Function
+
+```solidity
+  function burn(uint256 tokenId) public onlyOwner() {
+    _burn(tokenId);
+  }
+```
+
+The `burn` function permanently destroys a token, removing it from circulation. This function:
+1. Uses the `onlyOwner` modifier to restrict access to just the contract owner
+2. Calls the internal `_burn` function from the ERC721 implementation to destroy the token
+
+This functionality could be useful for removing counterfeit or problematic tokens from circulation, but as only the contract owner can call it, the token holders themselves cannot burn tokens they own.
+
+## Commented-Out Function
+
+```solidity
+  // function setTokenURI(uint256 tokenId, string memory _tokenURI) public {
+  //   require(_isApprovedOrOwner(_msgSender(), tokenId), 'ERC721: caller is not owner nor approved');
+  //   _setTokenURI(tokenId, _tokenURI);
+  // }
+```
+
+This commented-out function would have allowed for changing a token's URI after minting, but it's currently disabled. The function would have allowed token owners or approved operators to set custom URIs for their tokens. Since it's commented out, our NFT implementation maintains fixed, unchangeable metadata for all tokens.
+
+## Technical Insights
+
+### On-Chain Storage
+
+All data for this NFT is stored directly on the blockchain. This includes:
+- The SVG image (as a string of SVG markup)
+- The metadata (name, description, and image)
+
+This approach has trade-offs:
+- **Advantages**: Fully decentralized, immune to link rot, guaranteed availability as long as the blockchain exists
+- **Disadvantages**: Higher gas costs for deployment and minting, limited space for complex artwork
+
+### SVG For Artwork
+
+The contract uses SVG (Scalable Vector Graphics) for the token artwork. SVG is ideal for on-chain storage because:
+1. It's text-based, so it can be stored directly in smart contract code
+2. It's scalable, so it can be displayed at any size without loss of quality
+3. It's widely supported by web browsers and NFT marketplaces
+
+### Base64 Encoding
+
+Both the image and metadata are encoded in Base64, which converts binary data to ASCII text. This encoding is necessary because:
+1. Blockchain storage works with text
+2. Data URIs require Base64 encoding
+3. It allows complex data to be embedded directly into the tokenURI
+
+## Owner-Only Burning Implementation
+
+The burning functionality is restricted to the contract owner through:
+1. The `onlyOwner` modifier, which checks the caller's identity against the contract owner
+2. Direct application of this modifier to the `burn` function
+
+This restriction is important as burning permanently removes tokens from circulation. By limiting this power to the contract owner, the implementation prevents token holders from destroying their own tokens, which could be useful for maintaining collection integrity.
+
+## Conclusion
+
+This NFT contract implementation demonstrates several important concepts:
+1. Fully on-chain metadata and images using SVG and Base64 encoding
+2. Simple public minting functionality
+3. Owner-restricted token burning
+4. Clean inheritance from established OpenZeppelin contracts
+
+The implementation combines industry-standard components with custom logic for SVG generation. By storing all data on-chain, this contract creates truly decentralized digital assets that aren't dependent on external servers or IPFS.
+
+The fighter theme of the artwork creates a unique brand identity for the collection, and the SVG implementation allows for scalable, high-quality rendering on any platform that supports the ERC721 standard.
+
+While this implementation allows unlimited minting, which might affect token value, it could be extended with features like:
+1. Minting limits or costs
+2. Tiered or randomized artwork
+3. Additional metadata attributes
+4. Interactive or animated SVG elements
+
+As it stands, this contract serves as a solid foundation for creating on-chain NFTs with custom artwork and can be deployed with minimal configuration.
